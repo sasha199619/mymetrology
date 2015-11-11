@@ -1,0 +1,498 @@
+unit Unit1;
+
+interface
+
+uses
+  Winapi.Windows, Winapi.Messages, System.SysUtils, System.Variants,
+  System.Classes, Vcl.Graphics,
+  Vcl.Controls, Vcl.Forms, Vcl.Dialogs, Vcl.StdCtrls;
+
+type
+  Tmetrick = class(TForm)
+    butforopenfile: TButton;
+    OpenDialog1: TOpenDialog;
+    start: TButton;
+    winforcode: TMemo;
+    Resultofmetricks: TMemo;
+    procedure butforopenfileClick(Sender: TObject);
+    procedure FormCreate(Sender: TObject);
+    procedure startClick(Sender: TObject);
+  private
+    { Private declarations }
+  public
+    { Public declarations }
+  end;
+
+type
+  Typelistofvars = ^listofvars;
+
+  listofvars = record
+    thevar: string;
+    next: Typelistofvars;
+  end;
+
+  Typelistofsubroutinsvars = ^listofsubroutinsvars;
+
+  listofsubroutinsvars = record
+    thevar: string;
+    next: Typelistofsubroutinsvars;
+  end;
+
+  Typesetofchar = set of char;
+
+const
+  const0 = 0;
+  const1 = 1;
+  const2 = 2;
+  const3 = 3;
+  const4 = 4;
+  const5 = 5;
+  const6 = 6;
+  const7 = 7;
+  const8 = 8;
+  const9 = 9;
+  const_php = '<?php';
+  const_phpwithspace = '<?php ';
+  const_thestartofprogrammbody = '{';
+  const_theendofprogrammbody = '}';
+  const_thestartofcomments = '/*';
+  const_theendofcomments = '*/';
+  const_thedollar = '$';
+  const_theendofoperator = ';';
+  const_theendofline = '#13#10';
+  const_thelineofcomments = '//';
+  const_thespace = ' ';
+  const_thenull = '';
+  const_thequote = '''';
+  const_thedoublequote = '"';
+  const_theglobals = 'globals[';
+  const_theglobal = 'global';
+  const_theprocedure = 'procedure';
+  const_thefunction = 'function';
+  const_theecho = 'echo';
+  const_theif = 'if';
+  const_theclass = 'class';
+  const_thefor = 'for';
+
+var
+  metrick: Tmetrick;
+  waytofile: string;
+  fileofphpcode: textfile;
+  thevars, thefirstvars: Typelistofvars;
+  setofsymbols: Typesetofchar = ['=', ' ', ')', '(', '[', ']', '<', '>', ';',
+    ',', '+', '-'];
+  subroutinevars, firstofsubroutinevars: Typelistofsubroutinsvars;
+
+implementation
+
+{$R *.dfm}
+
+procedure skipthealgorithm(phpcode: string; nameofcycle: string;
+  sizeofcycle: integer; var index: integer);
+var
+  index3: integer;
+begin
+  if ansilowercase(copy(phpcode, index, sizeofcycle)) = nameofcycle then
+  begin
+    while (copy(phpcode, index, const1) <> const_theendofoperator) and
+      (copy(phpcode, index, const1) <> const_thestartofprogrammbody) do
+      inc(index);
+    if copy(phpcode, index, const1) = const_thestartofprogrammbody then
+    begin
+      inc(index3);
+    end;
+    while index3 <> const0 do
+    begin
+      inc(index);
+      if (copy(phpcode, index, const1) = const_thestartofprogrammbody) then
+        inc(index3);
+      if (copy(phpcode, index, const1) = const_theendofprogrammbody) then
+        dec(index3);
+    end;
+  end;
+end;
+
+function findinlistofvars(thevars, thefirstvars: Typelistofvars;
+  the_var: string): boolean;
+begin
+  thevars := thefirstvars;
+  if thevars^.next <> nil then
+    while (thevars^.next <> nil) and (thevars^.thevar <> the_var) do
+      thevars := thevars^.next;
+  if (thevars = nil) or (thevars^.thevar <> the_var) then
+    result := true;
+end;
+
+procedure addtolistofvars(var thevars: Typelistofvars; the_var: string);
+begin
+  new(thevars^.next);
+  thevars := thevars^.next;
+  thevars.thevar := the_var;
+  thevars^.next := nil;
+end;
+
+function findinlistofsubroutinevars(thevars, thefirstvars
+  : Typelistofsubroutinsvars; the_var: string): boolean;
+begin
+  thevars := thefirstvars;
+  if thevars <> nil then
+    while (thevars <> nil) and (thevars^.thevar <> the_var) do
+      thevars := thevars^.next;
+  if (thevars = nil) or (thevars^.thevar <> the_var) then
+    result := true;
+end;
+
+procedure addtolistofsubroutinevars(var thevars: Typelistofsubroutinsvars;
+  the_var: string);
+begin
+  new(thevars^.next);
+  thevars := thevars^.next;
+  thevars.thevar := the_var;
+  thevars^.next := nil;
+end;
+
+procedure skipthesubroutine(phpcode: string; nameofsubroutine: string;
+  sizeofsubroutine: integer; var index: integer; setofsymbols: Typesetofchar;
+  var index4, index5: integer);
+var
+  index3, index2: integer;
+begin
+  if ansilowercase(copy(phpcode, index, sizeofsubroutine)) = nameofsubroutine
+  then
+  begin
+    inc(index4);
+    while (copy(phpcode, index, const1) <> const_theendofoperator) and
+      (copy(phpcode, index, const1) <> const_thestartofprogrammbody) do
+      inc(index);
+    if copy(phpcode, index, const1) = const_thestartofprogrammbody then
+    begin
+      inc(index3);
+    end;
+    while index3 <> const0 do
+    begin
+      inc(index);
+      if ansilowercase(copy(phpcode, index, const6)) = const_theglobal then
+      begin
+        index2 := index + const5;
+        while copy(phpcode, index2, const1) <> const_theendofoperator do
+        begin
+          if copy(phpcode, index2, const1) = const_thedollar then
+          begin
+            index := index2;
+            while not(phpcode[index2] in setofsymbols) do
+              inc(index2);
+            if firstofsubroutinevars = nil then
+            begin
+              new(subroutinevars);
+              subroutinevars^.thevar := copy(phpcode, index, index2 - index);
+              subroutinevars^.next := nil;
+              firstofsubroutinevars := subroutinevars;
+            end
+            else if findinlistofsubroutinevars(subroutinevars,
+              firstofsubroutinevars, copy(phpcode, index, index2 - index)) then
+              addtolistofsubroutinevars(subroutinevars,
+                copy(phpcode, index, index2 - index));
+            index := index2 - const1;
+          end
+          else
+            inc(index2);
+        end;
+      end;
+      if copy(phpcode, index, const1) = const_thedollar then
+      begin
+        index2 := index;
+        while not(phpcode[index2] in setofsymbols) do
+          inc(index2);
+        if not(findinlistofsubroutinevars(subroutinevars, firstofsubroutinevars,
+          copy(phpcode, index, index2 - index))) then
+          inc(index5);
+        index := index2;
+      end;
+      if (copy(phpcode, index, const1) = const_thestartofprogrammbody) then
+        inc(index3);
+      if (copy(phpcode, index, const1) = const_theendofprogrammbody) then
+        dec(index3);
+    end;
+  end;
+end;
+
+procedure writetowindowsforcode(text: string; winforcode: TMemo);
+
+var
+  index1, index2: integer;
+  flag: boolean;
+  textfromcode: string;
+begin
+  index2 := const1;
+  index1 := const1;
+  flag := true;
+  winforcode.text := 'The code:';
+  while flag do
+  begin
+    textfromcode := copy(text, index1, const6);
+    while (textfromcode <> const_theendofline) and
+      (index1 <= length(text) - const5) do
+    begin
+      inc(index1);
+      textfromcode := copy(text, index1, const6);
+    end;
+    if index1 <= length(text) then
+      winforcode.lines.Add(copy(text, index2, index1 - index2))
+    else
+      flag := false;
+    index2 := index1 + const6;
+    index1 := index2;
+  end;
+end;
+
+procedure Tmetrick.butforopenfileClick(Sender: TObject);
+begin
+  if OpenDialog1.execute then
+    waytofile := OpenDialog1.FileName;
+end;
+
+procedure Tmetrick.FormCreate(Sender: TObject);
+begin
+  waytofile := const_thenull;
+  winforcode.text := const_thenull;
+end;
+
+procedure Tmetrick.startClick(Sender: TObject);
+var
+  linefromcode, linefromcode2, phpcode, textfromphpcode,
+    fivesymbolsfromcode: string;
+  index, index2, index3, index4, index5, index6, numoflines,
+    lengthofrubbish: integer;
+  flag: boolean;
+begin
+  winforcode.text := const_thenull;
+  phpcode := const_thenull;
+  index := const1;
+  index4 := const0;
+  index5 := const0;
+  index6 := const0;
+  if waytofile <> const_thenull then
+  begin
+    assignfile(fileofphpcode, waytofile);
+    reset(fileofphpcode);
+    while not(eof(fileofphpcode)) do
+    begin
+      readln(fileofphpcode, linefromcode);
+      phpcode := phpcode + linefromcode + const_theendofline;
+      inc(index);
+      winforcode.lines.Add(linefromcode);
+    end;
+    numoflines := index - const1;
+    index := const1;
+    textfromphpcode := copy(phpcode, index, const6);
+    fivesymbolsfromcode := copy(phpcode, index, const5);
+    while ((textfromphpcode <> const_phpwithspace) and
+      (index <= (length(phpcode) - const5))) and
+      ((fivesymbolsfromcode <> const_php) or (copy(phpcode, index + const5,
+      const6) <> const_theendofline)) do
+    begin
+      inc(index);
+      textfromphpcode := copy(phpcode, index, const6);
+      fivesymbolsfromcode := copy(phpcode, index, const5);
+    end;
+    if (textfromphpcode = const_phpwithspace) or
+      ((fivesymbolsfromcode = const_php) and (copy(phpcode, index + const5,
+      const6) = const_theendofline)) then
+    begin
+      index2 := const1;
+      delete(phpcode, const1, index - const1);
+      index := const1;
+      while index <= (length(phpcode) - const7) do
+      begin
+        linefromcode := copy(phpcode, index, const2);
+        while ((linefromcode <> const_thestartofcomments) and
+          ((length(phpcode) - const1) >= index)) do
+        begin
+          inc(index);
+          linefromcode := copy(phpcode, index, const2);
+        end;
+        index2 := index + const2;
+        if ((linefromcode = const_thestartofcomments) and
+          ((length(phpcode) - const1) >= index)) then
+        begin
+          linefromcode2 := copy(phpcode, index2, const2);
+          while ((linefromcode2 <> const_theendofcomments) and
+            ((length(phpcode) - const1) >= index2)) do
+          begin
+            inc(index2);
+            linefromcode2 := copy(phpcode, index2, const2);
+          end;
+          delete(phpcode, index, index2 - index + const2);
+        end;
+      end;
+      index := const1;
+      index2 := const1;
+      while index <= (length(phpcode) - const7) do
+      begin
+        linefromcode := copy(phpcode, index, const2);
+        if linefromcode = const_thelineofcomments then
+        begin
+          index2 := index;
+          linefromcode := copy(phpcode, index2, const6);
+          while linefromcode <> const_theendofline do
+          begin
+            inc(index2);
+            linefromcode := copy(phpcode, index2, const6);
+          end;
+          delete(phpcode, index, index2 - index);
+          index2 := index;
+          dec(index2);
+          while (copy(phpcode, index2, const1) = const_thespace) or
+            (copy(phpcode, index2 - const5, const6) <> const_theendofline) do
+            dec(index2);
+          if (copy(phpcode, index2 - const5, const6) = const_theendofline) then
+            delete(phpcode, index2, index - index2 + const5);
+        end;
+        if copy(phpcode, index, const2) <> const_thelineofcomments then
+          inc(index);
+      end;
+      index := const1;
+      index2 := const1;
+      flag := false;;
+      while index <= (length(phpcode) - const7) do
+      begin
+        linefromcode := copy(phpcode, index, const1);
+        if linefromcode = const_thedoublequote then
+        begin
+          inc(index);
+          index2 := index;
+          linefromcode := copy(phpcode, index2, const1);
+          while (linefromcode <> const_thedoublequote) and
+            (index2 <= length(phpcode)) do
+          begin
+            inc(index2);
+            linefromcode := copy(phpcode, index2, const1);
+          end;
+
+          delete(phpcode, index, index2 - index);
+        end;
+        inc(index);
+      end;
+      index := const1;
+      index2 := const1;
+      while index <= (length(phpcode) - const7) do
+      begin
+        if ansilowercase(copy(phpcode, index, const8)) = const_theglobals then
+        begin
+          delete(phpcode, index, const8);
+          flag := true;
+          while copy(phpcode, index, const1) <> const_thequote do
+            inc(index);
+        end;
+        linefromcode := copy(phpcode, index, const1);
+        if linefromcode = const_thequote then
+        begin
+          inc(index);
+          index2 := index;
+          while (copy(phpcode, index2, const1) <> const_thequote) and
+            (index2 <= length(phpcode)) do
+            inc(index2);
+          if flag then
+          begin
+            if firstofsubroutinevars = nil then
+            begin
+              new(subroutinevars);
+              subroutinevars^.thevar := const_thedollar +
+                copy(phpcode, index, index2 - index);
+              subroutinevars^.next := nil;
+              firstofsubroutinevars := subroutinevars;
+            end
+            else if findinlistofsubroutinevars(subroutinevars,
+              firstofsubroutinevars, copy(phpcode, index, index2 - index)) then
+              addtolistofsubroutinevars(subroutinevars,
+                const_thedollar + copy(phpcode, index, index2 - index));
+            while copy(phpcode, index2, const6) <> const_theendofline do
+              inc(index2);
+            flag := false;
+          end;
+          delete(phpcode, index, index2 - index);
+        end;
+        inc(index);
+      end;
+      writetowindowsforcode(phpcode, winforcode);
+      index := const1;
+      index2 := index;
+      while index <= (length(phpcode) - const6) do
+      begin
+        index3 := const0;
+        skipthesubroutine(phpcode, const_theprocedure, const9, index,
+          setofsymbols, index4, index5);
+        skipthesubroutine(phpcode, const_thefunction, const8, index,
+          setofsymbols, index4, index5);
+        skipthealgorithm(phpcode, const_thefor, const3, index);
+        skipthealgorithm(phpcode, const_theif, const2, index);
+        skipthealgorithm(phpcode, const_theecho, const4, index);
+        skipthealgorithm(phpcode, const_theclass, const5, index);
+        if copy(phpcode, index, const1) = const_thedollar then
+        begin
+          index2 := index;
+          while not(phpcode[index2] in setofsymbols) do
+            inc(index2);
+          if thefirstvars = nil then
+          begin
+            new(thevars);
+            thevars^.thevar := copy(phpcode, index, index2 - index);
+            thevars^.next := nil;
+            thefirstvars := thevars;
+            inc(index6);
+          end
+          else
+          begin
+            if findinlistofvars(thevars, thefirstvars,
+              copy(phpcode, index, index2 - index)) then
+            begin
+              addtolistofvars(thevars, copy(phpcode, index, index2 - index));
+              inc(index6);
+            end;
+          end;
+          index := index2;
+        end
+        else
+          inc(index);
+      end;
+      thevars := thefirstvars;
+      winforcode.text := 'The vars in main body of programm:';
+      while thevars <> nil do
+      begin
+        winforcode.lines.Add(thevars^.thevar);
+        thevars := thevars^.next;
+      end;
+      winforcode.lines.Add('The global vars in subroutines are:');
+      subroutinevars := firstofsubroutinevars;
+      while subroutinevars <> nil do
+      begin
+        winforcode.lines.Add(subroutinevars^.thevar);
+        subroutinevars := subroutinevars^.next;
+      end;
+      winforcode.lines.Add('The number of vars in main body of programm is:');
+      winforcode.lines.Add(inttostr(index6));
+      winforcode.lines.Add('The number of subroutins is:');
+      winforcode.lines.Add(inttostr(index4));
+      winforcode.lines.Add('The number of applies to global vars is :');
+      winforcode.lines.Add(inttostr(index5));
+      winforcode.lines.Add
+        ('The result of metricks of applies to global vars is:');
+      if index4 = const0 then
+        showmessage('The subroutines not founded')
+      else if index6 = const0 then
+        showmessage('The vars in main body of programm not founded')
+      else
+        winforcode.lines.Add(floattostr(index5 / (index4 * index6)));
+    end
+    else
+    begin
+      showmessage('PHP code did not found');
+      exit;
+    end;
+  end
+  else
+    showmessage('Выберите файл для проведения метрики кода');
+  closefile(fileofphpcode);
+end;
+
+end.

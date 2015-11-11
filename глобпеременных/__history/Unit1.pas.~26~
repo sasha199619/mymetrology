@@ -1,0 +1,463 @@
+unit Unit1;
+
+interface
+
+uses
+  Winapi.Windows, Winapi.Messages, System.SysUtils, System.Variants,
+  System.Classes, Vcl.Graphics,
+  Vcl.Controls, Vcl.Forms, Vcl.Dialogs, Vcl.StdCtrls;
+
+type
+  Tmetrick = class(TForm)
+    butforopenfile: TButton;
+    OpenDialog1: TOpenDialog;
+    start: TButton;
+    winforcode: TMemo;
+    Resultofmetricks: TMemo;
+    procedure butforopenfileClick(Sender: TObject);
+    procedure FormCreate(Sender: TObject);
+    procedure startClick(Sender: TObject);
+  private
+    { Private declarations }
+  public
+    { Public declarations }
+  end;
+
+type
+  Typelistofvars = ^listofvars;
+
+  listofvars = record
+    thevar: string;
+    next: Typelistofvars;
+  end;
+
+  Typelistofsubroutinsvars = ^listofsubroutinsvars;
+
+  listofsubroutinsvars = record
+    thevar: string;
+    next: Typelistofsubroutinsvars;
+  end;
+
+  Typesetofchar = set of char;
+
+const
+  lineend = '#13#10';
+
+var
+  metrick: Tmetrick;
+  waytofile: string;
+  fileofphpcode: textfile;
+  theendofline: array [1 .. 1000] of integer;
+  thevars, thefirstvars: Typelistofvars;
+  setofsymbols: Typesetofchar = ['=', ' ', ')', '(', '[', ']', '<', '>', ';',
+    ',', '+', '-'];
+  subroutinevars, firstofsubroutinevars: Typelistofsubroutinsvars;
+
+implementation
+
+{$R *.dfm}
+
+procedure skipthealgorithm(phpcode: string; nameofcycle: string;
+  sizeofcycle: integer; var index: integer);
+var
+  index3: integer;
+begin
+  if ansilowercase(copy(phpcode, index, sizeofcycle)) = nameofcycle then
+  begin
+    while (copy(phpcode, index, 1) <> ';') and
+      (copy(phpcode, index, 1) <> '{') do
+      inc(index);
+    if copy(phpcode, index, 1) = '{' then
+    begin
+      inc(index3);
+    end;
+    while index3 <> 0 do
+    begin
+      inc(index);
+      if (copy(phpcode, index, 1) = '{') then
+        inc(index3);
+      if (copy(phpcode, index, 1) = '}') then
+        dec(index3);
+    end;
+  end;
+end;
+
+function findinlistofvars(thevars, thefirstvars: Typelistofvars;
+  the_var: string): boolean;
+begin
+  thevars := thefirstvars;
+  if thevars^.next <> nil then
+    while (thevars^.next <> nil) and (thevars^.thevar <> the_var) do
+      thevars := thevars^.next;
+  if (thevars = nil) or (thevars^.thevar <> the_var) then
+    result := true;
+end;
+
+procedure addtolistofvars(var thevars: Typelistofvars; the_var: string);
+begin
+  new(thevars^.next);
+  thevars := thevars^.next;
+  thevars.thevar := the_var;
+  thevars^.next := nil;
+end;
+
+function findinlistofsubroutinevars(thevars, thefirstvars
+  : Typelistofsubroutinsvars; the_var: string): boolean;
+begin
+  thevars := thefirstvars;
+  if thevars <> nil then
+    while (thevars <> nil) and (thevars^.thevar <> the_var) do
+      thevars := thevars^.next;
+  if (thevars = nil) or (thevars^.thevar <> the_var) then
+    result := true;
+end;
+
+procedure addtolistofsubroutinevars(var thevars: Typelistofsubroutinsvars;
+  the_var: string);
+begin
+  new(thevars^.next);
+  thevars := thevars^.next;
+  thevars.thevar := the_var;
+  thevars^.next := nil;
+end;
+
+procedure skipthesubroutine(phpcode: string; nameofsubroutine: string;
+  sizeofsubroutine: integer; var index: integer; setofsymbols: Typesetofchar;
+  var index4, index5: integer);
+var
+  index3, index2: integer;
+begin
+  if ansilowercase(copy(phpcode, index, sizeofsubroutine)) = nameofsubroutine
+  then
+  begin
+    inc(index4);
+    while (copy(phpcode, index, 1) <> ';') and
+      (copy(phpcode, index, 1) <> '{') do
+      inc(index);
+    if copy(phpcode, index, 1) = '{' then
+    begin
+      inc(index3);
+    end;
+    while index3 <> 0 do
+    begin
+      inc(index);
+      if ansilowercase(copy(phpcode, index, 6)) = 'global' then
+      begin
+        index2 := index + 5;
+        while copy(phpcode, index2, 1) <> ';' do
+        begin
+          if copy(phpcode, index2, 1) = '$' then
+          begin
+            index := index2;
+            while not(phpcode[index2] in setofsymbols) do
+              inc(index2);
+            if firstofsubroutinevars = nil then
+            begin
+              new(subroutinevars);
+              subroutinevars^.thevar := copy(phpcode, index, index2 - index);
+              subroutinevars^.next := nil;
+              firstofsubroutinevars := subroutinevars;
+            end
+            else if findinlistofsubroutinevars(subroutinevars,
+              firstofsubroutinevars, copy(phpcode, index, index2 - index)) then
+              addtolistofsubroutinevars(subroutinevars,
+                copy(phpcode, index, index2 - index));
+            index := index2 - 1;
+          end
+          else
+            inc(index2);
+        end;
+      end;
+      if copy(phpcode, index, 1) = '$' then
+      begin
+        index2 := index;
+        while not(phpcode[index2] in setofsymbols) do
+          inc(index2);
+        if not(findinlistofsubroutinevars(subroutinevars, firstofsubroutinevars,
+          copy(phpcode, index, index2 - index))) then
+          inc(index5);
+        index := index2;
+      end;
+      if (copy(phpcode, index, 1) = '{') then
+        inc(index3);
+      if (copy(phpcode, index, 1) = '}') then
+        dec(index3);
+    end;
+  end;
+end;
+
+procedure writetowindowsforcode(text: string; winforcode: TMemo);
+
+var
+  index1, index2: integer;
+  flag: boolean;
+  textfromcode: string;
+begin
+  index2 := 1;
+  index1 := 1;
+  flag := true;
+  winforcode.text := 'The code:';
+  while flag do
+  begin
+    textfromcode := copy(text, index1, 6);
+    while (textfromcode <> '#13#10') and (index1 <= length(text) - 5) do
+    begin
+      inc(index1);
+      textfromcode := copy(text, index1, 6);
+    end;
+    if index1 <= length(text) then
+      winforcode.lines.Add(copy(text, index2, index1 - index2))
+    else
+      flag := false;
+    index2 := index1 + 6;
+    index1 := index2;
+  end;
+end;
+
+procedure Tmetrick.butforopenfileClick(Sender: TObject);
+begin
+  if OpenDialog1.execute then
+    waytofile := OpenDialog1.FileName;
+end;
+
+procedure Tmetrick.FormCreate(Sender: TObject);
+begin
+  waytofile := '';
+  winforcode.text := '';
+  Resultofmetricks.text := '';
+end;
+
+procedure Tmetrick.startClick(Sender: TObject);
+var
+  linefromcode, linefromcode2, phpcode, textfromphpcode,
+    fivesymbolsfromcode: string;
+  index, index2, index3, index4, index5, index6, numoflines,
+    lengthofrubbish: integer;
+  flag: boolean;
+begin
+  winforcode.text := '';
+  phpcode := '';
+  index := 1;
+  index4 := 0;
+  index5 := 0;
+  index6 := 0;
+  if waytofile <> '' then
+  begin
+    assignfile(fileofphpcode, waytofile);
+    reset(fileofphpcode);
+    while not(eof(fileofphpcode)) do
+    begin
+      readln(fileofphpcode, linefromcode);
+      phpcode := phpcode + linefromcode + '#13#10';
+      inc(index);
+      winforcode.lines.Add(linefromcode);
+    end;
+    numoflines := index - 1;
+    // showmessage(phpcode);
+
+    index := 1;
+    textfromphpcode := copy(phpcode, index, 6);
+    fivesymbolsfromcode := copy(phpcode, index, 5);
+    while ((textfromphpcode <> '<?php ') and (index <= (length(phpcode) - 5)))
+      and ((fivesymbolsfromcode <> '<?php') or
+      (copy(phpcode, index + 5, 6) <> '#13#10')) do
+    begin
+      inc(index);
+      textfromphpcode := copy(phpcode, index, 6);
+      fivesymbolsfromcode := copy(phpcode, index, 5);
+    end;
+    if (textfromphpcode = '<?php ') or
+      ((fivesymbolsfromcode = '<?php') and (copy(phpcode, index + 5,
+      6) = '#13#10')) then
+    begin
+      index2 := 1;
+      delete(phpcode, 1, index - 1);
+      index := 1;
+      while index <= (length(phpcode) - 7) do
+      begin
+        linefromcode := copy(phpcode, index, 2);
+        while ((linefromcode <> '/*') and ((length(phpcode) - 1) >= index)) do
+        begin
+          inc(index);
+          linefromcode := copy(phpcode, index, 2);
+        end;
+        index2 := index + 2;
+        if ((linefromcode = '/*') and ((length(phpcode) - 1) >= index)) then
+        begin
+          linefromcode2 := copy(phpcode, index2, 2);
+          while ((linefromcode2 <> '*/') and
+            ((length(phpcode) - 1) >= index2)) do
+          begin
+            inc(index2);
+            linefromcode2 := copy(phpcode, index2, 2);
+          end;
+          delete(phpcode, index, index2 - index + 2);
+        end;
+      end;
+      index := 1;
+      index2 := 1;
+      while index <= (length(phpcode) - 7) do
+      begin
+        linefromcode := copy(phpcode, index, 2);
+        if linefromcode = '//' then
+        begin
+          index2 := index;
+          linefromcode := copy(phpcode, index2, 6);
+          while linefromcode <> '#13#10' do
+          begin
+            inc(index2);
+            linefromcode := copy(phpcode, index2, 6);
+          end;
+          delete(phpcode, index, index2 - index);
+          index2 := index;
+          dec(index2);
+          while (copy(phpcode, index2, 1) = ' ') or
+            (copy(phpcode, index2 - 5, 6) <> '#13#10') do
+            dec(index2);
+          if (copy(phpcode, index2 - 5, 6) = '#13#10') then
+            delete(phpcode, index2, index - index2 + 5);
+        end;
+        if copy(phpcode, index, 2) <> '//' then
+          inc(index);
+      end;
+      index := 1;
+      index2 := 1;
+      flag := false;;
+      while index <= (length(phpcode) - 7) do
+      begin
+        linefromcode := copy(phpcode, index, 1);
+        if linefromcode = '"' then
+        begin
+          inc(index);
+          index2 := index;
+          linefromcode := copy(phpcode, index2, 1);
+          while (linefromcode <> '"') and (index2 <= length(phpcode)) do
+          begin
+            inc(index2);
+            linefromcode := copy(phpcode, index2, 1);
+          end;
+
+          delete(phpcode, index, index2 - index);
+        end;
+        inc(index);
+      end;
+      index := 1;
+      index2 := 1;
+      while index <= (length(phpcode) - 7) do
+      begin
+        linefromcode := copy(phpcode, index, 1);
+        if ansilowercase(copy(phpcode, index, 8)) = 'globals[' then
+        begin
+          flag := true;
+          while copy(phpcode, index, 1) <> '''' do
+            inc(index);
+        end;
+        if linefromcode = '''' then
+        begin
+          inc(index);
+          index2 := index;
+          while (copy(phpcode, index2, 1) <> '''') and
+            (index2 <= length(phpcode)) do
+            inc(index2);
+          if flag then
+          begin
+            if firstofsubroutinevars = nil then
+            begin
+              new(subroutinevars);
+              subroutinevars^.thevar := '$' + copy(phpcode, index,
+                index2 - index);
+              subroutinevars^.next := nil;
+              firstofsubroutinevars := subroutinevars;
+            end
+            else if findinlistofsubroutinevars(subroutinevars,
+              firstofsubroutinevars, copy(phpcode, index, index2 - index)) then
+              addtolistofsubroutinevars(subroutinevars,
+                '$' + copy(phpcode, index, index2 - index));
+            flag := false;
+          end;
+          delete(phpcode, index, index2 - index - 1);
+        end;
+        inc(index);
+      end;
+      writetowindowsforcode(phpcode, winforcode);
+      index := 1;
+      index2 := index;
+      while index <= (length(phpcode) - 6) do
+      begin
+        index3 := 0;
+        skipthesubroutine(phpcode, 'procedure', 9, index, setofsymbols,
+          index4, index5);
+        skipthesubroutine(phpcode, 'function', 8, index, setofsymbols,
+          index4, index5);
+        skipthealgorithm(phpcode, 'for', 3, index);
+        skipthealgorithm(phpcode, 'if', 2, index);
+        skipthealgorithm(phpcode, 'echo', 4, index);
+        skipthealgorithm(phpcode, 'class', 5, index);
+        if copy(phpcode, index, 1) = '$' then
+        begin
+          index2 := index;
+          while not(phpcode[index2] in setofsymbols) do
+            inc(index2);
+          if thefirstvars = nil then
+          begin
+            new(thevars);
+            thevars^.thevar := copy(phpcode, index, index2 - index);
+            thevars^.next := nil;
+            thefirstvars := thevars;
+            inc(index6);
+          end
+          else
+          begin
+            if findinlistofvars(thevars, thefirstvars,
+              copy(phpcode, index, index2 - index)) then
+            begin
+              addtolistofvars(thevars, copy(phpcode, index, index2 - index));
+              inc(index6);
+            end;
+          end;
+          index := index2;
+        end
+        else
+          inc(index);
+      end;
+      thevars := thefirstvars;
+      winforcode.text := 'The vars in main body of programm:';
+      while thevars <> nil do
+      begin
+        winforcode.lines.Add(thevars^.thevar);
+        thevars := thevars^.next;
+      end;
+      winforcode.lines.Add('The global vars in subroutines are:');
+      subroutinevars := firstofsubroutinevars;
+      while subroutinevars <> nil do
+      begin
+        winforcode.lines.Add(subroutinevars^.thevar);
+        subroutinevars := subroutinevars^.next;
+      end;
+      winforcode.lines.Add('The number of vars in main body of programm is:');
+      winforcode.lines.Add(inttostr(index6));
+      winforcode.lines.Add('The number of subroutins is:');
+      winforcode.lines.Add(inttostr(index4));
+      winforcode.lines.Add('The number of applies to global vars is :');
+      winforcode.lines.Add(inttostr(index5));
+      winforcode.lines.Add
+        ('The result of metricks of applies to global vars is:');
+      if index4 = 0 then
+        showmessage('The subroutines not founded')
+      else if index6 = 0 then
+        showmessage('The vars in main body of programm not founded')
+      else
+        winforcode.lines.Add(floattostr(index5 / (index4 * index6)));
+    end
+    else
+    begin
+      showmessage('PHP code did not found');
+      exit;
+    end;
+  end
+  else
+    showmessage('Выберите файл для проведения метрики кода');
+  closefile(fileofphpcode);
+end;
+
+end.
